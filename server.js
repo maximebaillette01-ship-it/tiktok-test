@@ -34,7 +34,12 @@ wss.on('connection', ws => {
     username = String(username || '').trim().replace(/^@/, '').slice(0, 40);
     if (!username) return status('error', 'Entre ton pseudo TikTok');
     status('connecting', `Connexion à @${username}…`);
-    const c = new TikTokLiveConnection(username);
+    let c;
+    try {
+      c = new TikTokLiveConnection(username, { signApiKey: process.env.EULER_API_KEY || undefined });
+    } catch (e) {
+      return status('error', String(e?.message || e).slice(0, 200));
+    }
     conn = c;
 
     c.on(WebcastEvent.GIFT, data => {
@@ -58,7 +63,11 @@ wss.on('connection', ws => {
       if (conn === c) status('connected', `Connecté au live de @${username}`);
     } catch (e) {
       if (conn === c) conn = null;
-      status('error', String(e?.message || e).slice(0, 200));
+      const msg = e?.constructor?.name === 'UserOfflineError' ? `@${username} n'est pas en live en ce moment`
+        : e?.constructor?.name === 'InvalidResponseCompositeError' ? `Compte @${username} introuvable ou TikTok bloque la connexion`
+        : String(e?.message || e).slice(0, 200);
+      console.error('connect failed:', e?.constructor?.name, e?.message);
+      status('error', msg);
     }
   }
 
