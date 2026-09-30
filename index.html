@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>TikTok Soundboard</title>
+<style>
+  :root { --bg:#0f0f14; --card:#1b1b25; --card2:#252534; --txt:#f2f2f7; --mut:#9a9ab0; --acc:#fe2c55; --acc2:#25f4ee; --ok:#3ddc84; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { margin:0; background:var(--bg); color:var(--txt); font:16px system-ui,sans-serif; padding:12px; padding-bottom:40px; }
+  h2 { font-size:15px; margin:0 0 10px; color:var(--mut); text-transform:uppercase; letter-spacing:.06em; }
+  .card { background:var(--card); border-radius:14px; padding:14px; margin-bottom:12px; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  input, select { background:var(--card2); color:var(--txt); border:1px solid #33334a; border-radius:10px; padding:11px 12px; font-size:16px; min-width:0; }
+  input[type=range] { padding:0; accent-color:var(--acc); }
+  button { background:var(--card2); color:var(--txt); border:0; border-radius:10px; padding:11px 16px; font-size:16px; cursor:pointer; }
+  button:active { transform:scale(.97); }
+  .primary { background:var(--acc); font-weight:600; }
+  .danger { background:#5a1d2b; }
+  .grow { flex:1; }
+  #status { display:flex; align-items:center; gap:8px; font-size:14px; color:var(--mut); margin-top:10px; }
+  #dot { width:10px; height:10px; border-radius:50%; background:#666; flex:none; }
+  .connected #dot { background:var(--ok); } .connecting #dot { background:#f5a623; } .error #dot { background:var(--acc); }
+  #unlock { display:none; width:100%; background:var(--acc2); color:#000; font-weight:700; padding:16px; margin-bottom:12px; }
+  .pads { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:10px; }
+  .pad { background:linear-gradient(145deg,#2b2b40,#20202f); border-radius:14px; padding:12px; min-height:92px; display:flex; flex-direction:column; justify-content:space-between; text-align:left; }
+  .pad.playing { outline:3px solid var(--acc2); }
+  .pad .name { font-weight:600; word-break:break-word; }
+  .pad .tools { display:flex; gap:6px; margin-top:8px; align-items:center; }
+  .pad .tools button { padding:5px 9px; font-size:13px; }
+  .badge { font-size:12px; color:var(--acc2); margin-top:4px; }
+  .rule { display:grid; grid-template-columns:1.3fr 90px 1.3fr auto; gap:8px; margin-bottom:8px; }
+  @media (max-width:640px){ .rule { grid-template-columns:1fr 1fr; } }
+  #feed { max-height:160px; overflow:auto; font-size:14px; color:var(--mut); }
+  #feed div { padding:3px 0; border-bottom:1px solid #2a2a3a; }
+  .small { font-size:13px; color:var(--mut); }
+</style>
+</head>
+<body>
+<button id="unlock">🔈 Touche ici pour activer le son</button>
+
+<div class="card">
+  <div class="row">
+    <input id="username" class="grow" placeholder="@ton_pseudo_tiktok" autocapitalize="off" autocorrect="off">
+    <button id="connect" class="primary">Connecter</button>
+    <button id="disconnect">Stop</button>
+  </div>
+  <div id="status"><span id="dot"></span><span id="statusText">Déconnecté</span></div>
+  <div class="small" style="margin-top:6px">Garde cet écran ouvert pendant le live (l'écran reste allumé automatiquement).</div>
+</div>
+
+<div class="card">
+  <h2>Mes sons</h2>
+  <div class="row" style="margin-bottom:12px">
+    <button id="import" class="primary">＋ Importer des sons</button>
+    <input type="file" id="file" accept="audio/*" multiple hidden>
+    <button id="stopAll">⏹ Stop sons</button>
+    <label class="small grow" style="min-width:150px">Volume général
+      <input type="range" id="master" min="0" max="1" step="0.05" style="width:100%">
+    </label>
+  </div>
+  <div class="pads" id="pads"></div>
+</div>
+
+<div class="card">
+  <div class="row" style="margin-bottom:10px">
+    <h2 class="grow" style="margin:0">Sons prêts à l'emploi</h2>
+    <button id="addAllPresets">Tout ajouter</button>
+  </div>
+  <div class="small" style="margin-bottom:10px">▶ pour écouter, ＋ pour l'ajouter à « Mes sons ».</div>
+  <div class="pads" id="presets"></div>
+</div>
+
+<div class="card">
+  <h2>Quel son pour quel cadeau ?</h2>
+  <div id="rules"></div>
+  <datalist id="gifts"></datalist>
+  <div class="row">
+    <button id="addRule">＋ Ajouter une règle</button>
+    <button id="saveRules" class="primary">Enregistrer</button>
+    <label class="small">Pause min. entre 2 sons (s)
+      <input type="number" id="cooldown" min="0" step="0.5" style="width:80px">
+    </label>
+  </div>
+  <p class="small" style="margin:10px 0 0">
+    Tape le nom exact du cadeau (ex : Rose, Galaxy) — les cadeaux déjà reçus apparaissent dans la liste. Mets <b>*</b> pour « n'importe quel cadeau » avec un minimum de 💎.
+    Une règle avec un nom précis est prioritaire.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Activité</h2>
+  <div class="row" style="margin-bottom:8px">
+    <input id="testGift" list="gifts" placeholder="Cadeau de test" style="width:160px">
+    <input id="testDiamonds" type="number" value="1" min="1" style="width:80px">
+    <button id="fake">Simuler un cadeau</button>
+  </div>
+  <div id="feed"></div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+
+// ---------- Stockage local (sons = IndexedDB, réglages = localStorage) ----------
+const dbp = new Promise((res, rej) => {
+  const r = indexedDB.open('soundboard', 1);
+  r.onupgradeneeded = () => r.result.createObjectStore('sounds', { keyPath: 'id' });
+  r.onsuccess = () => res(r.result);
+  r.onerror = () => rej(r.error);
+});
+const tx = async (mode, fn) => {
+  const db = await dbp;
+  return new Promise((res, rej) => {
+    const t = db.transaction('sounds', mode);
+    const out = fn(t.objectStore('sounds'));
+    t.oncomplete = () => res(out?.result);
+    t.onerror = () => rej(t.error);
+  });
+};
+const dbAll = () => tx('readonly', s => s.getAll());
+const dbPut = v => tx('readwrite', s => s.put(v));
+const dbDel = id => tx('readwrite', s => s.delete(id));
+
+let settings = { username: '', rules: [], masterVolume: 1, cooldownMs: 0, knownGifts: {} };
+try { Object.assign(settings, JSON.parse(localStorage.getItem('sb-settings') || '{}')); } catch {}
+const saveSettings = () => localStorage.setItem('sb-settings', JSON.stringify(settings));
+let sounds = []; // { id, name, volume, blob }
+
+// ---------- Audio ----------
+const ctx = new (window.AudioContext || window.webkitAudioContext)();
+const buffers = new Map();
+const active = new Set();
+let audioUnlocked = false;
+
+async function getBuffer(s) {
+  if (!buffers.has(s.id)) buffers.set(s.id, await ctx.decodeAudioData(await s.blob.arrayBuffer()));
+  return buffers.get(s.id);
+}
+async function play(id) {
+  const s = sounds.find(x => x.id === id);
+  if (!s) return;
+  if (!audioUnlocked) await unlock();
+  try {
+    const src = ctx.createBufferSource(), gain = ctx.createGain();
+    src.buffer = await getBuffer(s);
+    gain.gain.value = (s.volume ?? 1) * settings.masterVolume;
+    src.connect(gain).connect(ctx.destination);
+    src.start();
+    active.add(src); flash(id, true);
+    src.onended = () => { active.delete(src); flash(id, false); };
+  } catch (e) { console.error(e); log('⚠️ Son illisible : ' + s.name); }
+}
+const flash = (id, on) => document.querySelector(`.pad[data-id="${id}"]`)?.classList.toggle('playing', on);
+
+async function unlock() {
+  try { await ctx.resume(); } catch {}
+  const s = ctx.createBufferSource(); s.buffer = ctx.createBuffer(1, 1, 22050); s.connect(ctx.destination); s.start(0);
+  audioUnlocked = ctx.state === 'running';
+  $('#unlock').style.display = audioUnlocked ? 'none' : 'block';
+}
+$('#unlock').onclick = unlock;
+document.addEventListener('pointerdown', () => { if (!audioUnlocked) unlock(); });
+$('#stopAll').onclick = () => active.forEach(s => { try { s.stop(); } catch {} });
+setTimeout(() => { if (!audioUnlocked) $('#unlock').style.display = 'block'; }, 300);
+
+// Empêche la mise en veille de l'écran
+let wake;
+async function keepAwake() { try { wake = await navigator.wakeLock?.request('screen'); } catch {} }
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') keepAwake(); });
+
+// ---------- Connexion au relais ----------
+let ws, wantConnect = false;
+function openWS() {
+  ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host);
+  ws.onopen = () => { if (wantConnect) ws.send(JSON.stringify({ type: 'connect', username: settings.username })); };
+  ws.onmessage = ev => {
+    const m = JSON.parse(ev.data);
+    if (m.type === 'status') setStatus(m);
+    if (m.type === 'gift') onGift(m);
+  };
+  ws.onclose = () => { if (wantConnect) { setStatus({ state: 'connecting', message: 'Reconnexion…' }); setTimeout(openWS, 2000); } };
+}
+function setStatus(st) {
+  $('#status').className = st.state;
+  $('#statusText').textContent = st.message || ({ disconnected: 'Déconnecté', connecting: 'Connexion…', connected: 'Connecté' }[st.state] || st.state);
+}
+$('#connect').onclick = () => {
+  settings.username = $('#username').value.trim().replace(/^@/, '');
+  saveSettings();
+  wantConnect = true; keepAwake(); unlock();
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'connect', username: settings.username }));
+  else openWS();
+};
+$('#disconnect').onclick = () => {
+  wantConnect = false;
+  if (ws?.readyState === 1) ws.send(JSON.stringify({ type: 'disconnect' }));
+  wake?.release?.();
+};
+
+// ---------- Cadeaux -> sons ----------
+let lastPlay = 0;
+function onGift({ gift, diamonds, user, count }) {
+  log(`🎁 ${user} : ${gift} ×${count} (${diamonds}💎)`);
+  if (settings.knownGifts[gift] !== diamonds) { settings.knownGifts[gift] = diamonds; saveSettings(); renderGifts(); }
+  if (Date.now() - lastPlay < settings.cooldownMs) return;
+  const specific = settings.rules.find(r => r.gift !== '*' && r.gift.toLowerCase() === gift.toLowerCase());
+  const generic = settings.rules.filter(r => r.gift === '*' && diamonds >= (r.minDiamonds || 0))
+    .sort((a, b) => (b.minDiamonds || 0) - (a.minDiamonds || 0))[0];
+  const rule = specific || generic;
+  if (!rule) return;
+  lastPlay = Date.now();
+  play(rule.soundId);
+  log('🔊 ' + (sounds.find(s => s.id === rule.soundId)?.name || '?'));
+}
+$('#fake').onclick = () => onGift({ gift: $('#testGift').value || 'Rose', diamonds: +$('#testDiamonds').value || 1, user: 'Test', count: 1 });
+function log(t) {
+  const d = document.createElement('div');
+  d.textContent = new Date().toLocaleTimeString() + '  ' + t;
+  $('#feed').prepend(d);
+  while ($('#feed').children.length > 60) $('#feed').lastChild.remove();
+}
+
+// ---------- Sons ----------
+$('#import').onclick = () => $('#file').click();
+$('#file').onchange = async e => {
+  for (const f of e.target.files) {
+    await dbPut({ id: crypto.randomUUID(), name: f.name.replace(/\.[^.]+$/, ''), volume: 1, blob: f });
+  }
+  e.target.value = '';
+  await loadSounds();
+};
+$('#master').oninput = e => { settings.masterVolume = +e.target.value; saveSettings(); };
+
+async function loadSounds() {
+  try { sounds = await dbAll(); } catch (e) { sounds = []; console.warn('Stockage indisponible', e); }
+  renderPads(); renderRules(); renderPresets();
+}
+
+// ---------- Sons prêts à l'emploi (synthétisés, aucun fichier) ----------
+const SR = 44100, TAU = Math.PI * 2;
+const rnd = () => Math.random() * 2 - 1;
+const sine = p => Math.sin(TAU * p), saw = p => 2 * (p % 1) - 1, sq = p => (p % 1) < .5 ? 1 : -1;
+const env = (t, a, d) => Math.min(1, t / a) * Math.exp(-t / d);
+const gen = (dur, fn) => { const n = Math.floor(dur * SR), a = new Float32Array(n); for (let i = 0; i < n; i++) a[i] = fn(i / SR, i); return a; };
+const sweep = (dur, f0, f1, shape, decay, amp = .9) => { let ph = 0; return gen(dur, t => { ph += f0 * Math.pow(f1 / f0, t / dur) / SR; return amp * shape(ph) * env(t, .005, decay); }); };
+const notes = (list, shape, decay, amp = .5) => gen(Math.max(...list.map(n => n[1] + n[2])) + .15, t => {
+  let s = 0;
+  for (const [f, st, len] of list) { const x = t - st; if (x >= 0 && x < len + .15) s += shape(f * x) * env(x, .004, decay) * (x < len ? 1 : 1 - (x - len) / .15); }
+  return s * amp;
+});
+const fade = (t, dur, f = .05) => Math.min(1, t / .01) * Math.min(1, (dur - t) / f);
+
+const PRESETS = [
+  ['Klaxon MLG', () => gen(1.3, t => (saw(440 * t) + saw(554 * t) + saw(659 * t) + .5 * saw(880 * t)) * .2 * fade(t, 1.3, .3))],
+  ['Vine Boom', () => { const a = sweep(1.4, 160, 38, sine, .45, .8); for (let i = 0; i < 2000; i++) a[i] += rnd() * Math.exp(-i / 300) * .6; return a; }],
+  ['Trombone triste', () => notes([[311, 0, .45], [294, .5, .45], [277, 1, .45], [261, 1.5, 1]], saw, 1.5, .3)],
+  ['Prout', () => { let ph = 0, w = 0; return gen(.9, t => { w += (rnd() - w) * .02; ph += Math.max(25, 85 - 40 * t + w * 400) / SR; return (saw(ph) * .6 + rnd() * .15) * (.55 + .45 * sq(28 * t)) * .7 * fade(t, .9, .25); }); }],
+  ['Bonk', () => { const a = sweep(.35, 480, 110, sine, .07, .9); for (let i = 0; i < 800; i++) a[i] += rnd() * Math.exp(-i / 120) * .5; return a; }],
+  ['Scratch disque', () => { let ph = 0; return gen(.7, t => { const f = t < .35 ? 1800 - 4000 * t : 400 + 3000 * (t - .35); ph += Math.max(60, f) / SR; return (saw(ph) * .5 + rnd() * .4) * .5 * env(t, .01, .5) * fade(t, .7, .1); }); }],
+  ['Boing', () => { let ph = 0; return gen(.9, t => { ph += 260 * (1 + .7 * Math.exp(-t * 4) * sine(9 * t)) / SR; return sine(ph) * .8 * env(t, .005, .35); }); }],
+  ['Dun dun dun', () => notes([[130.8, 0, .3], [130.8, .45, .3], [98, .9, 1.4]], saw, .8, .45)],
+  ['Jumpscare', () => gen(1.2, t => { let s = 0; for (const f of [311, 330, 466, 622, 740]) s += saw(f * t * (1 + .02 * sine(7 * t))); return (s * .14 + rnd() * .3) * env(t, .002, .5) * fade(t, 1.2, .2); })],
+  ['Erreur', () => notes([[523, 0, .12], [392, .18, .35]], sq, .3, .35)],
+  ['Grillons', () => gen(3, t => { const x = t % 1; return sine(4300 * t) * (x < .5 && (x % .15) < .07 ? 1 : 0) * .3 * fade(t, 3, .1); })],
+  ['Sirène police', () => { let ph = 0; return gen(2.6, t => { ph += (900 + 350 * sine(.9 * t)) / SR; return (sine(ph) + .4 * sine(2 * ph)) * .4 * fade(t, 2.6, .1); }); }],
+  ['Ta-da', () => notes([[392, 0, .15], [523, .18, 1.1], [659, .18, 1.1], [784, .18, 1.1]], sq, .7, .2)],
+  ['Ba-dum-tss', () => { const d = x => x < 0 ? 0 : (sine(110 * x) * Math.exp(-x * 18) + rnd() * .3 * Math.exp(-x * 60)); return gen(1.2, t => (d(t) + d(t - .2) + (t > .45 ? rnd() * Math.exp(-(t - .45) * 7) * .5 : 0)) * .8); }],
+  ['Applaudissements', () => gen(2.5, t => rnd() * (.25 + .75 * Math.pow(Math.random(), 3)) * .6 * Math.min(1, t / .2) * Math.min(1, (2.5 - t) / .6))],
+  ['Bip censure', () => gen(.9, t => sine(1000 * t) * .5 * fade(t, .9, .02))],
+  ['Coin-coin', () => { let ph = 0; return gen(.9, t => { const x = t % .45; ph += (620 - 500 * Math.min(x, .25)) / SR; return x < .25 ? (saw(ph) * .6 + sq(ph) * .2) * .6 * fade(x, .25, .05) : 0; }); }],
+  ['Chute', () => sweep(1, 1600, 150, sine, 1.5, .6)],
+  ['Bass drop', () => sweep(1.8, 220, 28, sine, .9, 1)],
+  ['Explosion', () => { let y = 0; return gen(1.6, t => { y += (rnd() - y) * (.25 * Math.exp(-t * 2) + .02); return y * 1.4 * env(t, .003, .45); }); }]
+];
+function toWav(samples) {
+  const buf = new ArrayBuffer(44 + samples.length * 2), v = new DataView(buf);
+  const str = (o, s) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+  str(0, 'RIFF'); v.setUint32(4, 36 + samples.length * 2, true); str(8, 'WAVEfmt ');
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, SR, true); v.setUint32(28, SR * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  str(36, 'data'); v.setUint32(40, samples.length * 2, true);
+  samples.forEach((s, i) => v.setInt16(44 + i * 2, Math.max(-1, Math.min(1, s)) * 32767, true));
+  return new Blob([buf], { type: 'audio/wav' });
+}
+async function previewPreset(make) {
+  if (!audioUnlocked) await unlock();
+  const data = make(), b = ctx.createBuffer(1, data.length, SR);
+  b.copyToChannel(data, 0);
+  const src = ctx.createBufferSource(), g = ctx.createGain();
+  g.gain.value = settings.masterVolume; src.buffer = b; src.connect(g).connect(ctx.destination); src.start();
+}
+async function addPreset([name, make]) {
+  if (sounds.some(s => s.name === name)) return;
+  await dbPut({ id: crypto.randomUUID(), name, volume: 1, blob: toWav(make()) });
+  sounds = await dbAll();
+}
+function renderPresets() {
+  const box = $('#presets'); box.innerHTML = '';
+  for (const p of PRESETS) {
+    const have = sounds.some(s => s.name === p[0]);
+    const el = document.createElement('div');
+    el.className = 'pad'; el.style.minHeight = '70px';
+    el.innerHTML = `<div class="name"></div><div class="tools"><button class="pv">▶</button><button class="ad primary"></button></div>`;
+    el.querySelector('.name').textContent = p[0];
+    const ad = el.querySelector('.ad');
+    ad.textContent = have ? '✓' : '＋'; ad.disabled = have;
+    el.querySelector('.pv').onclick = () => previewPreset(p[1]);
+    ad.onclick = async () => { await addPreset(p); await loadSounds(); };
+    box.appendChild(el);
+  }
+}
+$('#addAllPresets').onclick = async () => { for (const p of PRESETS) await addPreset(p); await loadSounds(); };
+
+function renderPads() {
+  const box = $('#pads'); box.innerHTML = '';
+  if (!sounds.length) box.innerHTML = '<div class="small">Aucun son. Clique sur « Importer des sons ».</div>';
+  for (const s of sounds) {
+    const used = settings.rules.filter(r => r.soundId === s.id).map(r => r.gift === '*' ? `*≥${r.minDiamonds || 0}💎` : r.gift);
+    const el = document.createElement('div');
+    el.className = 'pad'; el.dataset.id = s.id;
+    el.innerHTML = `<div><div class="name"></div>${used.length ? '<div class="badge"></div>' : ''}</div>
+      <div class="tools"><input type="range" min="0" max="1" step="0.05" style="width:60px" title="Volume"><button class="ren">✎</button><button class="del danger">🗑</button></div>`;
+    el.querySelector('.name').textContent = s.name;
+    if (used.length) el.querySelector('.badge').textContent = '🎁 ' + used.join(', ');
+    const vol = el.querySelector('input'); vol.value = s.volume ?? 1;
+    el.onclick = e => { if (!e.target.closest('.tools')) play(s.id); };
+    vol.onchange = () => { s.volume = +vol.value; dbPut(s); };
+    el.querySelector('.ren').onclick = () => { const n = prompt('Nouveau nom :', s.name); if (n) { s.name = n; dbPut(s).then(loadSounds); } };
+    el.querySelector('.del').onclick = async () => {
+      if (!confirm(`Supprimer « ${s.name} » ?`)) return;
+      await dbDel(s.id); buffers.delete(s.id);
+      settings.rules = settings.rules.filter(r => r.soundId !== s.id); saveSettings();
+      loadSounds();
+    };
+    box.appendChild(el);
+  }
+}
+
+// ---------- Règles ----------
+function ruleRow(r) {
+  const el = document.createElement('div'); el.className = 'rule';
+  el.innerHTML = `<input class="g" list="gifts" placeholder="Nom du cadeau ou *">
+    <input class="d" type="number" min="0" placeholder="💎 min" title="Diamants minimum (pour *)">
+    <select class="s"></select><button class="danger">✕</button>`;
+  el.querySelector('.g').value = r.gift || '';
+  el.querySelector('.d').value = r.minDiamonds || 0;
+  const sel = el.querySelector('.s');
+  for (const s of sounds) { const o = new Option(s.name, s.id, false, s.id === r.soundId); sel.add(o); }
+  el.querySelector('button').onclick = () => el.remove();
+  return el;
+}
+function renderRules() {
+  $('#rules').innerHTML = '';
+  settings.rules.forEach(r => $('#rules').appendChild(ruleRow(r)));
+}
+function renderGifts() {
+  $('#gifts').innerHTML = Object.entries(settings.knownGifts).map(([n, d]) => `<option value="${n.replace(/"/g, '&quot;')}">${d}💎</option>`).join('');
+}
+$('#addRule').onclick = () => {
+  if (!sounds.length) return alert('Importe d’abord un son.');
+  $('#rules').appendChild(ruleRow({ gift: '', soundId: sounds[0].id }));
+};
+$('#saveRules').onclick = () => {
+  settings.rules = [...$('#rules').children].map(el => ({
+    gift: el.querySelector('.g').value.trim(),
+    minDiamonds: +el.querySelector('.d').value || 0,
+    soundId: el.querySelector('.s').value
+  })).filter(r => r.gift && r.soundId);
+  settings.cooldownMs = Math.round((+$('#cooldown').value || 0) * 1000);
+  saveSettings(); renderPads();
+  $('#saveRules').textContent = 'Enregistré ✓';
+  setTimeout(() => $('#saveRules').textContent = 'Enregistrer', 1200);
+};
+
+// ---------- Init ----------
+$('#username').value = settings.username;
+$('#master').value = settings.masterVolume;
+$('#cooldown').value = settings.cooldownMs / 1000;
+renderGifts();
+loadSounds();
+navigator.storage?.persist?.(); // demande au navigateur de ne pas effacer les sons
+</script>
+</body>
+</html>
