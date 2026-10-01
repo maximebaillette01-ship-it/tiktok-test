@@ -42,26 +42,25 @@ wss.on('connection', ws => {
     }
     conn = c;
 
-    const seenGroups = new Set();
-    let logged = false;
+    const groups = new Map(); // groupId -> nombre de cadeaux déjà annoncés dans la série
     c.on(WebcastEvent.GIFT, data => {
       const g = data.gift || data.giftDetails || {};
-      if (!logged) { logged = true; console.log('Premier cadeau reçu :', g.name || g.giftName, '| clés:', Object.keys(data).slice(0, 12).join(',')); }
-      // Cadeaux en série (ex: plein de Roses) : on joue dès le premier, pas à chaque incrément
       const streakable = g.type === 1 || g.giftType === 1 || g.combo === true;
+      let units = data.repeatCount || 1;
+      // Série (ex: plein de Roses d'affilée) : on envoie seulement les nouveaux cadeaux depuis le dernier événement
       if (streakable && data.groupId) {
-        if (seenGroups.has(data.groupId)) {
-          if (data.repeatEnd) seenGroups.delete(data.groupId);
-          return;
-        }
-        if (!data.repeatEnd) { seenGroups.add(data.groupId); setTimeout(() => seenGroups.delete(data.groupId), 60000); }
+        const prev = groups.get(data.groupId) || 0;
+        if (data.repeatEnd) groups.delete(data.groupId);
+        else { groups.set(data.groupId, Math.max(prev, units)); setTimeout(() => groups.delete(data.groupId), 60000); }
+        units -= prev;
+        if (units <= 0) return;
       }
       send({
         type: 'gift',
         gift: g.name || g.giftName || 'Cadeau',
-        diamonds: (g.diamondCount || 0) * (data.repeatCount || 1),
+        diamonds: (g.diamondCount || 0) * units,
         user: data.user?.nickname || data.user?.displayId || data.user?.uniqueId || '???',
-        count: data.repeatCount || 1
+        count: units
       });
     });
     c.on(WebcastEvent.STREAM_END, () => status('disconnected', 'Le live est terminé'));
