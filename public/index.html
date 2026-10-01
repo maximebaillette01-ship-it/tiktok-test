@@ -218,7 +218,8 @@ function onGift({ gift, diamonds, user, count }) {
   if (!rule) return log(`ℹ️ Aucune règle pour « ${gift} » (${diamonds}💎) — ajoute-la dans « Quel son pour quel cadeau ? »`);
   if (!sounds.some(s => s.id === rule.soundId)) return log('⚠️ Le son de la règle « ' + rule.gift + ' » a été supprimé');
   lastPlay = Date.now();
-  play(rule.soundId);
+  // Un son par cadeau (jusqu'à 10), légèrement décalés pour qu'on les entende tous
+  for (let i = 0; i < Math.min(count || 1, 10); i++) setTimeout(() => play(rule.soundId), i * 350);
   log('🔊 ' + (sounds.find(s => s.id === rule.soundId)?.name || '?'));
 }
 $('#fake').onclick = () => onGift({ gift: $('#testGift').value || 'Rose', diamonds: +$('#testDiamonds').value || 1, user: 'Test', count: 1 });
