@@ -153,8 +153,25 @@ async function play(id) {
     src.connect(gain).connect(ctx.destination);
     src.start();
     active.add(src); flash(id, true);
-    src.onended = () => { active.delete(src); flash(id, false); };
+    return new Promise(done => {
+      const end = () => { if (!active.delete(src)) return; flash(id, false); done(); };
+      src.onended = end;
+      setTimeout(end, (src.buffer.duration + .5) * 1000); // sécurité si "ended" n'arrive pas
+    });
   } catch (e) { console.error(e); log('⚠️ Son illisible : ' + s.name); }
+}
+
+// File d'attente : les sons des cadeaux se jouent un par un, pas tous en même temps
+const queue = [];
+let queueRunning = false;
+function enqueue(id, n) {
+  for (let i = 0; i < n && queue.length < 25; i++) queue.push(id);
+  if (!queueRunning) runQueue();
+}
+async function runQueue() {
+  queueRunning = true;
+  while (queue.length) { await play(queue.shift()); await new Promise(r => setTimeout(r, 80)); }
+  queueRunning = false;
 }
 const flash = (id, on) => document.querySelector(`.pad[data-id="${id}"]`)?.classList.toggle('playing', on);
 
@@ -167,7 +184,7 @@ async function unlock() {
 $('#unlock').onclick = unlock;
 ctx.onstatechange = () => { audioUnlocked = ctx.state === 'running'; $('#unlock').style.display = audioUnlocked ? 'none' : 'block'; };
 document.addEventListener('pointerdown', () => { if (!audioUnlocked) unlock(); });
-$('#stopAll').onclick = () => active.forEach(s => { try { s.stop(); } catch {} });
+$('#stopAll').onclick = () => { queue.length = 0; active.forEach(s => { try { s.stop(); } catch {} }); };
 setTimeout(() => { if (!audioUnlocked) $('#unlock').style.display = 'block'; }, 300);
 
 // Empêche la mise en veille de l'écran
@@ -218,8 +235,7 @@ function onGift({ gift, diamonds, user, count }) {
   if (!rule) return log(`ℹ️ Aucune règle pour « ${gift} » (${diamonds}💎) — ajoute-la dans « Quel son pour quel cadeau ? »`);
   if (!sounds.some(s => s.id === rule.soundId)) return log('⚠️ Le son de la règle « ' + rule.gift + ' » a été supprimé');
   lastPlay = Date.now();
-  // Un son par cadeau (jusqu'à 10), légèrement décalés pour qu'on les entende tous
-  for (let i = 0; i < Math.min(count || 1, 10); i++) setTimeout(() => play(rule.soundId), i * 350);
+  enqueue(rule.soundId, count || 1);
   log('🔊 ' + (sounds.find(s => s.id === rule.soundId)?.name || '?'));
 }
 $('#fake').onclick = () => onGift({ gift: $('#testGift').value || 'Rose', diamonds: +$('#testDiamonds').value || 1, user: 'Test', count: 1 });
