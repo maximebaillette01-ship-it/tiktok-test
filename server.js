@@ -42,15 +42,25 @@ wss.on('connection', ws => {
     }
     conn = c;
 
+    const seenGroups = new Set();
+    let logged = false;
     c.on(WebcastEvent.GIFT, data => {
-      const d = data.giftDetails || {};
-      const streakable = d.giftType === 1;
-      if (streakable && !data.repeatEnd) return; // on attend la fin de la série
+      const g = data.gift || data.giftDetails || {};
+      if (!logged) { logged = true; console.log('Premier cadeau reçu :', g.name || g.giftName, '| clés:', Object.keys(data).slice(0, 12).join(',')); }
+      // Cadeaux en série (ex: plein de Roses) : on joue dès le premier, pas à chaque incrément
+      const streakable = g.type === 1 || g.giftType === 1 || g.combo === true;
+      if (streakable && data.groupId) {
+        if (seenGroups.has(data.groupId)) {
+          if (data.repeatEnd) seenGroups.delete(data.groupId);
+          return;
+        }
+        if (!data.repeatEnd) { seenGroups.add(data.groupId); setTimeout(() => seenGroups.delete(data.groupId), 60000); }
+      }
       send({
         type: 'gift',
-        gift: d.giftName || data.giftName || 'Cadeau',
-        diamonds: (d.diamondCount || data.diamondCount || 0) * (streakable ? data.repeatCount || 1 : 1),
-        user: data.user?.nickname || data.user?.uniqueId || '???',
+        gift: g.name || g.giftName || 'Cadeau',
+        diamonds: (g.diamondCount || 0) * (data.repeatCount || 1),
+        user: data.user?.nickname || data.user?.displayId || data.user?.uniqueId || '???',
         count: data.repeatCount || 1
       });
     });
