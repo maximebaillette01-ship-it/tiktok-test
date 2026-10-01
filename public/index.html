@@ -141,7 +141,11 @@ async function getBuffer(s) {
 async function play(id) {
   const s = sounds.find(x => x.id === id);
   if (!s) return;
-  if (!audioUnlocked) await unlock();
+  if (ctx.state !== 'running') { try { await ctx.resume(); } catch {} }
+  if (ctx.state !== 'running') {
+    $('#unlock').style.display = 'block';
+    return log('⚠️ Son bloqué par la tablette : touche le bouton bleu « activer le son » en haut');
+  }
   try {
     const src = ctx.createBufferSource(), gain = ctx.createGain();
     src.buffer = await getBuffer(s);
@@ -161,6 +165,7 @@ async function unlock() {
   $('#unlock').style.display = audioUnlocked ? 'none' : 'block';
 }
 $('#unlock').onclick = unlock;
+ctx.onstatechange = () => { audioUnlocked = ctx.state === 'running'; $('#unlock').style.display = audioUnlocked ? 'none' : 'block'; };
 document.addEventListener('pointerdown', () => { if (!audioUnlocked) unlock(); });
 $('#stopAll').onclick = () => active.forEach(s => { try { s.stop(); } catch {} });
 setTimeout(() => { if (!audioUnlocked) $('#unlock').style.display = 'block'; }, 300);
@@ -205,11 +210,13 @@ function onGift({ gift, diamonds, user, count }) {
   log(`🎁 ${user} : ${gift} ×${count} (${diamonds}💎)`);
   if (settings.knownGifts[gift] !== diamonds) { settings.knownGifts[gift] = diamonds; saveSettings(); renderGifts(); }
   if (Date.now() - lastPlay < settings.cooldownMs) return;
-  const specific = settings.rules.find(r => r.gift !== '*' && r.gift.toLowerCase() === gift.toLowerCase());
+  const norm = s => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase();
+  const specific = settings.rules.find(r => r.gift !== '*' && norm(r.gift) === norm(gift));
   const generic = settings.rules.filter(r => r.gift === '*' && diamonds >= (r.minDiamonds || 0))
     .sort((a, b) => (b.minDiamonds || 0) - (a.minDiamonds || 0))[0];
   const rule = specific || generic;
-  if (!rule) return;
+  if (!rule) return log(`ℹ️ Aucune règle pour « ${gift} » (${diamonds}💎) — ajoute-la dans « Quel son pour quel cadeau ? »`);
+  if (!sounds.some(s => s.id === rule.soundId)) return log('⚠️ Le son de la règle « ' + rule.gift + ' » a été supprimé');
   lastPlay = Date.now();
   play(rule.soundId);
   log('🔊 ' + (sounds.find(s => s.id === rule.soundId)?.name || '?'));
